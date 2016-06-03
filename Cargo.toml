@@ -1,0 +1,11 @@
+[package]
+name = "comm_cuda"
+version = "0.0.1"
+authors = ["Peter Jin <peterhaijin@gmail.com>"]
+
+[lib]
+name = "comm_cuda"
+path = "src/lib.rs"
+
+[dependencies]
+array_cuda = { path = "../libarray_cuda" }
