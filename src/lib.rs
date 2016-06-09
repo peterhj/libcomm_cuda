@@ -1,7 +1,7 @@
 extern crate array_cuda;
 
-use array_cuda::device::{DeviceContext, DeviceBuffer, DeviceBufferInitExt, SharedDeviceBuffer};
-use array_cuda::device::linalg::{VectorExt};
+use array_cuda::device::{DeviceContext, DeviceBuffer, DeviceBufferInitExt, SharedDeviceBuffer, RawDeviceBuffer};
+use array_cuda::device::linalg::{VectorExt, AsyncBlasVectorExt};
 
 use std::rc::{Rc};
 use std::sync::{Arc, Barrier, Mutex};
@@ -12,9 +12,8 @@ pub struct RingDeviceBufCommBuilder<T> where T: Copy {
   //buf_len:      usize,
   buf_len:  Arc<Mutex<Option<usize>>>,
   barrier:  Arc<Barrier>,
-  //bufs:     Vec<Arc<Mutex<Option<Vec<SharedDeviceBuffer<T>>>>>>,
-  bufs_q:   Arc<Mutex<Vec<Option<Vec<Arc<SharedDeviceBuffer<T>>>>>>>,
-  //bufs:     Vec<Vec<Arc<SharedDeviceBuffer<T>>>>,
+  //bufs_q:   Arc<Mutex<Vec<Option<Vec<Arc<SharedDeviceBuffer<T>>>>>>>,
+  bufs_q:   Arc<Mutex<Vec<Option<Vec<Arc<RawDeviceBuffer<T>>>>>>>,
 }
 
 impl<T> RingDeviceBufCommBuilder<T> where T: Copy {
@@ -42,6 +41,14 @@ impl<T> RingDeviceBufCommBuilder<T> where T: Copy {
     let mut buf_len = self.buf_len.lock().unwrap();
     *buf_len = Some(new_buf_len);
   }
+
+  pub fn try_set_buf_len(&self, new_buf_len: usize) -> usize {
+    let mut buf_len = self.buf_len.lock().unwrap();
+    if buf_len.is_none() {
+      *buf_len = Some(new_buf_len);
+    }
+    (*buf_len).unwrap()
+  }
 }
 
 impl RingDeviceBufCommBuilder<f32> {
@@ -54,7 +61,8 @@ impl RingDeviceBufCommBuilder<f32> {
       let ctx = &(*context).as_ref();
       let mut parts = Vec::with_capacity(self.num_workers);
       for p in 0 .. self.num_workers {
-        parts.push(Arc::new(unsafe { SharedDeviceBuffer::new(padded_part_len, ctx) }));
+        //parts.push(Arc::new(unsafe { SharedDeviceBuffer::new(padded_part_len, ctx) }));
+        parts.push(Arc::new(unsafe { RawDeviceBuffer::new(padded_part_len, ctx) }));
       }
       /*let mut w_parts = self.bufs[worker_rank].clone();
       let mut w_guard = w_parts.lock().unwrap();
@@ -82,8 +90,9 @@ pub struct RingDeviceBufComm<T> where T: Copy {
   num_workers:  usize,
   barrier:  Arc<Barrier>,
   context:  Rc<DeviceContext>,
-  //pub bufs: Vec<Arc<Mutex<Option<Vec<SharedDeviceBuffer<T>>>>>>,
-  pub bufs: Vec<Vec<Arc<SharedDeviceBuffer<T>>>>,
+  //pub bufs: Vec<Vec<Arc<SharedDeviceBuffer<T>>>>,
+  pub bufs: Vec<Vec<Arc<RawDeviceBuffer<T>>>>,
+  //pub bufs: Vec<OpCursor<Vec<Arc<RawDeviceBuffer<T>>>>>,
 }
 
 impl RingDeviceBufComm<f32> {
@@ -97,10 +106,11 @@ impl RingDeviceBufComm<f32> {
       let part_idx = (self.worker_rank + round + self.num_workers - 1) % self.num_workers;
       let dst_rank = (self.worker_rank + 1) % self.num_workers;
       {
-        let mut src_buf = self.bufs[self.worker_rank][part_idx].clone();
-        let mut dst_buf = self.bufs[dst_rank][part_idx].clone();
         // FIXME(20160607)
-        //dst_buf.vector_add(1.0, &src_buf);
+        /*let src_buf = (*self.bufs[self.worker_rank][part_idx]).as_ref(ctx);
+        let mut dst_buf = (*self.bufs[dst_rank][part_idx]).as_ref_mut(ctx);
+        dst_buf.vector_add(1.0, &src_buf);*/
+        (*self.bufs[dst_rank][part_idx]).as_ref().async_vector_add(1.0, &(*self.bufs[self.worker_rank][part_idx]).as_ref(), ctx);
       }
       ctx.blocking_sync();
       self.barrier.wait();
@@ -117,9 +127,11 @@ impl RingDeviceBufComm<f32> {
       let part_idx = self.worker_rank;
       let dst_rank = (self.worker_rank + round + 1) % self.num_workers;
       {
-        let src_buf = (*self.bufs[self.worker_rank][part_idx]).as_ref(ctx);
+        // FIXME(20160608)
+        /*let src_buf = (*self.bufs[self.worker_rank][part_idx]).as_ref(ctx);
         let mut dst_buf = (*self.bufs[dst_rank][part_idx]).as_ref_mut(ctx);
-        dst_buf.copy(&src_buf);
+        dst_buf.copy(&src_buf);*/
+        self.bufs[self.worker_rank][part_idx].raw_send(&*self.bufs[dst_rank][part_idx], ctx);
       }
       ctx.blocking_sync();
       self.barrier.wait();
