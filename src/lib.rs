@@ -1,6 +1,7 @@
 extern crate array_cuda;
 
 use array_cuda::device::{DeviceContext, DeviceBuffer, DeviceBufferInitExt, SharedDeviceBuffer, RawDeviceBuffer};
+use array_cuda::device::ext::{DeviceAsyncNumExt};
 use array_cuda::device::linalg::{VectorExt, AsyncBlasVectorExt};
 
 use std::rc::{Rc};
@@ -63,7 +64,7 @@ impl RingDeviceBufCommBuilder<f32> {
       for p in 0 .. self.num_workers {
         //parts.push(Arc::new(unsafe { SharedDeviceBuffer::new(padded_part_len, ctx) }));
         let part = unsafe { RawDeviceBuffer::new(padded_part_len, ctx) };
-        part.as_ref().async_vector_scale(0.0, ctx);
+        part.as_ref().async_set_constant(0.0, ctx);
         parts.push(Arc::new(part));
       }
       /*let mut w_parts = self.bufs[worker_rank].clone();
