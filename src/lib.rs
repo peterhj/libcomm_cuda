@@ -1,8 +1,8 @@
 extern crate array_cuda;
 
 use array_cuda::device::{DeviceContext, DeviceBuffer, DeviceBufferInitExt, SharedDeviceBuffer, RawDeviceBuffer};
-use array_cuda::device::ext::{DeviceAsyncNumExt};
 use array_cuda::device::linalg::{VectorExt, AsyncBlasVectorExt};
+use array_cuda::device::num::{AsyncNumExt};
 
 use std::rc::{Rc};
 use std::sync::{Arc, Barrier, Mutex};
