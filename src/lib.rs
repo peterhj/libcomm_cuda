@@ -114,7 +114,7 @@ impl RingDeviceBufComm<f32> {
     let ctx = &(*self.context).as_ref();
     let num_rounds = self.num_workers - 1;
     for round in 0 .. num_rounds {
-      let part_idx = (self.worker_rank - round + self.num_workers - 1) % self.num_workers;
+      let part_idx = (self.worker_rank + self.num_workers - round - 1) % self.num_workers;
       let dst_rank = (self.worker_rank + 1) % self.num_workers;
       (*self.bufs[dst_rank][part_idx]).as_ref().async_vector_add(1.0, &(*self.bufs[self.worker_rank][part_idx]).as_ref(), ctx);
       if round < num_rounds - 1 {
