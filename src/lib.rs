@@ -67,6 +67,7 @@ impl RingDeviceBufCommBuilder<f32> {
         part.as_ref().async_set_constant(0.0, ctx);
         parts.push(Arc::new(part));
       }
+      ctx.blocking_sync();
       /*let mut w_parts = self.bufs[worker_rank].clone();
       let mut w_guard = w_parts.lock().unwrap();
       *w_guard = Some(parts);*/
@@ -114,13 +115,13 @@ impl RingDeviceBufComm<f32> {
     let ctx = &(*self.context).as_ref();
     let num_rounds = self.num_workers - 1;
     for round in 0 .. num_rounds {
+      //if round < num_rounds - 1 {
+      ctx.blocking_sync();
+      self.barrier.wait();
+      //}
       let part_idx = (self.worker_rank + self.num_workers - round - 1) % self.num_workers;
       let dst_rank = (self.worker_rank + 1) % self.num_workers;
       (*self.bufs[dst_rank][part_idx]).as_ref().async_vector_add(1.0, &(*self.bufs[self.worker_rank][part_idx]).as_ref(), ctx);
-      if round < num_rounds - 1 {
-        ctx.blocking_sync();
-        self.barrier.wait();
-      }
     }
   }
 
@@ -131,13 +132,13 @@ impl RingDeviceBufComm<f32> {
     let ctx = &(*self.context).as_ref();
     let num_rounds = self.num_workers - 1;
     for round in 0 .. num_rounds {
+      ctx.blocking_sync();
+      self.barrier.wait();
       let part_idx = self.worker_rank;
       let dst_rank = (self.worker_rank + round + 1) % self.num_workers;
       self.bufs[self.worker_rank][part_idx].raw_send(&*self.bufs[dst_rank][part_idx], ctx);
-      if round < num_rounds - 1 {
-        ctx.blocking_sync();
-        self.barrier.wait();
-      }
+      //if round < num_rounds - 1 {
+      //}
     }
   }
 
@@ -159,12 +160,14 @@ impl RingDeviceBufComm<f32> {
 
   pub fn allreduce_sum(&self) {
     self.reduce_scatter();
-    self.barrier();
     self.allgather();
+    self.barrier();
   }
 
   pub fn allreduce_average(&self) {
-    self.allreduce_sum();
+    self.reduce_scatter();
+    self.allgather();
     self.average();
+    self.barrier();
   }
 }
