@@ -166,8 +166,9 @@ impl RingDeviceBufComm<f32> {
 
   pub fn allreduce_average(&self) {
     self.reduce_scatter();
-    self.allgather();
+    self.barrier();
     self.average();
+    self.allgather();
     self.barrier();
   }
 }
